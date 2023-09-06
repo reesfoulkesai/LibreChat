@@ -1,9 +1,33 @@
 const partialRight = require('lodash/partialRight');
-const citationRegex = /\[\^\d+?\^]/g;
 const { getCitations, citeText } = require('./citations');
 const cursor = '<span className="result-streaming">█</span>';
+const citationRegex = /\[\^\d+?\^]/g;
 
-const addSpaceIfNeeded = (text) => (text.length > 0 && !text.endsWith(' ') ? text + ' ' : text);
+function startsWithList(newChunk) {
+  return /^(?<!\n)(\* |- |\+ |\d+\.)/.test(newChunk);
+}
+
+function validEnding(initialTokens) {
+  return /^(?<!\n)(\* |- |\+ |\d+\.).*[.!?;] $/.test(initialTokens);
+}
+
+function newLineCriteria(newChunk, initialTokens) {
+  if (startsWithList(newChunk)) {
+    return true;
+  } else if (initialTokens && validEnding(initialTokens)) {
+    return false;
+  }
+  return /^(?<!\n|[.,!?;:]\s)[A-Z]|^(?<!\n)(\* |- |\+ |\d+\.\s)/.test(newChunk);
+}
+
+function spaceCriteria(newChunk, initialTokens) {
+  const invalidStart = /^[.,!?;:\n\s]/;
+  const invalidEnd = /[.,!?;:\n\s]$/;
+
+  return !invalidStart.test(newChunk) && !invalidEnd.test(initialTokens);
+}
+
+const addSpaceIfNeeded = (text) => (text.length > 0 && spaceCriteria(text) ? `${text} ` : text);
 
 const handleError = (res, message) => {
   res.write(`event: error\ndata: ${JSON.stringify(message)}\n\n`);
@@ -22,10 +46,19 @@ const createOnProgress = ({ generation = '', onProgress: _onProgress }) => {
   let code = '';
   let precode = '';
   let codeBlock = false;
-  let tokens = addSpaceIfNeeded(generation);
+  let tokens = generation;
+  let initialTokens = tokens;
 
   const progressCallback = async (partial, { res, text, bing = false, ...rest }) => {
     let chunk = partial === text ? '' : partial;
+    const isFirstEditChunk = generation.length > 0 && i === 0;
+    if (isFirstEditChunk && spaceCriteria(chunk, initialTokens)) {
+      tokens = addSpaceIfNeeded(tokens);
+      initialTokens = tokens;
+    }
+    if (isFirstEditChunk && newLineCriteria(chunk, initialTokens)) {
+      chunk = `\n${chunk}`;
+    }
     tokens += chunk;
     precode += chunk;
     tokens = tokens.replaceAll('[DONE]', '');
@@ -45,7 +78,7 @@ const createOnProgress = ({ generation = '', onProgress: _onProgress }) => {
       codeBlock = true;
     }
 
-    if (tokens.match(/^\n(?!:::plugins:::)/)) {
+    if (generation.length === 0 && tokens.match(/^\n(?!:::plugins:::)/)) {
       tokens = tokens.replace(/^\n/, '');
     }
 
