@@ -108,6 +108,14 @@ const askBing = async ({
 
   // for reference:
   // https://github.com/waylaidwanderer/node-chatgpt-api/blob/main/demos/use-bing-client.js
+
+  try {
+    // Your code here
+  } catch (error) {
+    console.error('An error occurred while using the bingAIClient:', error);
+    throw new Error('An error occurred while using the bingAIClient');
+  }
+
 };
 
 module.exports = { askBing };
